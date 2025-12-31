@@ -172,7 +172,7 @@ export class KeywordsAi implements INodeType {
 						displayName: 'Variable',
 						values: [
 							{
-								displayName: 'Name',
+								displayName: 'Variable Name or ID',
 								name: 'name',
 								type: 'options',
 								typeOptions: {
@@ -180,7 +180,8 @@ export class KeywordsAi implements INodeType {
 									loadOptionsDependsOn: ['promptId', 'version'],
 								},
 								default: '',
-								description: 'Variable name from the prompt template',
+								description:
+									'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 							},
 							{
 								displayName: 'Value',
@@ -216,27 +217,6 @@ export class KeywordsAi implements INodeType {
 				default: {},
 				options: [
 					{
-						displayName: 'Override Params (JSON)',
-						name: 'overrideParamsJson',
-						type: 'string',
-						default: '',
-						description: 'JSON object with parameters (e.g. {"temperature": 0.5})',
-					},
-					{
-						displayName: 'Stream',
-						name: 'stream',
-						type: 'boolean',
-						default: false,
-						description: 'Whether to stream back partial progress token by token',
-					},
-					{
-						displayName: 'Metadata (JSON)',
-						name: 'metadata',
-						type: 'string',
-						default: '',
-						description: 'JSON object with key-value pairs for reference (e.g. {"session_id": "123", "user_type": "premium"})',
-					},
-					{
 						displayName: 'Custom Identifier',
 						name: 'customIdentifier',
 						type: 'string',
@@ -258,11 +238,32 @@ export class KeywordsAi implements INodeType {
 						description: 'JSON object with customer parameters like name, email, budget (e.g. {"customer_identifier": "user_123", "name": "John", "email": "john@example.com"})',
 					},
 					{
+						displayName: 'Metadata (JSON)',
+						name: 'metadata',
+						type: 'string',
+						default: '',
+						description: 'JSON object with key-value pairs for reference (e.g. {"session_id": "123", "user_type": "premium"})',
+					},
+					{
+						displayName: 'Override Params (JSON)',
+						name: 'overrideParamsJson',
+						type: 'string',
+						default: '',
+						description: 'JSON object with parameters (e.g. {"temperature": 0.5})',
+					},
+					{
 						displayName: 'Request Breakdown',
 						name: 'requestBreakdown',
 						type: 'boolean',
 						default: false,
 						description: 'Whether to return detailed metrics in the response (tokens, cost, latency, etc.)',
+					},
+					{
+						displayName: 'Stream',
+						name: 'stream',
+						type: 'boolean',
+						default: false,
+						description: 'Whether to stream back partial progress token by token',
 					},
 				],
 			},
