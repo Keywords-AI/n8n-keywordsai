@@ -66,12 +66,19 @@ npm run lint   # ✅ No errors
 - ✅ Prompt override support
 - ✅ "Latest" and specific version selection
 
-### 3. Credentials
+### 3. Observability Parameters
+- ✅ Metadata (JSON key-value pairs)
+- ✅ Custom Identifier (indexed tags)
+- ✅ Customer Identifier (user tracking)
+- ✅ Customer Params (budget & user details)
+- ✅ Request Breakdown (detailed metrics)
+
+### 4. Credentials
 - ✅ API Key authentication
 - ✅ Connection test endpoint
 - ✅ Secure storage in n8n
 
-### 4. Code Quality
+### 5. Code Quality
 - ✅ TypeScript with strict mode
 - ✅ Full type safety (no `any` types)
 - ✅ n8n linter compliant

@@ -96,6 +96,18 @@ Use your managed prompts from Keywords AI:
    - **Variables**: Fill in values (names auto-populated from prompt)
 4. Execute the node
 
+### Observability & Tracking
+
+Track and monitor your LLM calls with built-in observability parameters:
+
+- **Metadata**: Custom key-value pairs for reference
+- **Custom Identifier**: Fast, indexed tags for log filtering
+- **Customer Identifier**: Track per-user usage and costs
+- **Customer Params**: Detailed user info with budget tracking
+- **Request Breakdown**: Get metrics (tokens, cost, latency) in response
+
+See [OBSERVABILITY_GUIDE.md](./OBSERVABILITY_GUIDE.md) for detailed documentation.
+
 ### Example Workflow
 
 ```

@@ -227,6 +227,42 @@ export class KeywordsAi implements INodeType {
 						name: 'stream',
 						type: 'boolean',
 						default: false,
+						description: 'Whether to stream back partial progress token by token',
+					},
+					{
+						displayName: 'Metadata (JSON)',
+						name: 'metadata',
+						type: 'string',
+						default: '',
+						description: 'JSON object with key-value pairs for reference (e.g. {"session_id": "123", "user_type": "premium"})',
+					},
+					{
+						displayName: 'Custom Identifier',
+						name: 'customIdentifier',
+						type: 'string',
+						default: '',
+						description: 'Custom tag to identify and filter logs faster (indexed field)',
+					},
+					{
+						displayName: 'Customer Identifier',
+						name: 'customerIdentifier',
+						type: 'string',
+						default: '',
+						description: 'Tag to identify the user associated with this API call',
+					},
+					{
+						displayName: 'Customer Params (JSON)',
+						name: 'customerParams',
+						type: 'string',
+						default: '',
+						description: 'JSON object with customer parameters like name, email, budget (e.g. {"customer_identifier": "user_123", "name": "John", "email": "john@example.com"})',
+					},
+					{
+						displayName: 'Request Breakdown',
+						name: 'requestBreakdown',
+						type: 'boolean',
+						default: false,
+						description: 'Whether to return detailed metrics in the response (tokens, cost, latency, etc.)',
 					},
 				],
 			},
@@ -355,6 +391,11 @@ export class KeywordsAi implements INodeType {
 				const additionalFields = this.getNodeParameter('additionalFields', i) as {
 					overrideParamsJson?: string;
 					stream?: boolean;
+					metadata?: string;
+					customIdentifier?: string;
+					customerIdentifier?: string;
+					customerParams?: string;
+					requestBreakdown?: boolean;
 				};
 				let body: {
 					model?: string;
@@ -367,6 +408,11 @@ export class KeywordsAi implements INodeType {
 						override_params?: object;
 					};
 					stream?: boolean;
+					metadata?: object;
+					custom_identifier?: string;
+					customer_identifier?: string;
+					customer_params?: object;
+					request_breakdown?: boolean;
 				} = {};
 
 				if (resource === 'gateway') {
@@ -401,12 +447,32 @@ export class KeywordsAi implements INodeType {
 					if (version) body.prompt.version = version;
 				}
 
+				// Handle override params
 				if (additionalFields.overrideParamsJson) {
 					const params = JSON.parse(additionalFields.overrideParamsJson);
 					if (resource === 'gatewayPrompt' && body.prompt) body.prompt.override_params = params;
 					else Object.assign(body, params);
 				}
+				
+				// Handle stream
 				if (additionalFields.stream !== undefined) body.stream = additionalFields.stream;
+				
+				// Handle observability parameters
+				if (additionalFields.metadata) {
+					body.metadata = JSON.parse(additionalFields.metadata);
+				}
+				if (additionalFields.customIdentifier) {
+					body.custom_identifier = additionalFields.customIdentifier;
+				}
+				if (additionalFields.customerIdentifier) {
+					body.customer_identifier = additionalFields.customerIdentifier;
+				}
+				if (additionalFields.customerParams) {
+					body.customer_params = JSON.parse(additionalFields.customerParams);
+				}
+				if (additionalFields.requestBreakdown !== undefined) {
+					body.request_breakdown = additionalFields.requestBreakdown;
+				}
 
 				const responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'keywordsAIApi', {
 					method: 'POST',
