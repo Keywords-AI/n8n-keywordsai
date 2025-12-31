@@ -1,19 +1,22 @@
 {
-	"name": "n8n-nodes-<...>",
+	"name": "n8n-nodes-keywordsai",
 	"version": "0.1.0",
-	"description": "",
+	"description": "n8n node for Keywords AI",
 	"license": "MIT",
-	"homepage": "",
+	"homepage": "https://keywordsai.co",
 	"keywords": [
-		"n8n-community-node-package"
+		"n8n-community-node-package",
+		"keywordsai",
+		"llm",
+		"ai"
 	],
 	"author": {
-		"name": "",
-		"email": ""
+		"name": "Keywords AI",
+		"email": "team@keywordsai.co"
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/<...>/n8n-nodes-<...>.git"
+		"url": "https://github.com/Keywords-AI/n8n-nodes-keywordsai.git"
 	},
 	"scripts": {
 		"build": "n8n-node build",
@@ -31,12 +34,10 @@
 		"n8nNodesApiVersion": 1,
 		"strict": true,
 		"credentials": [
-			"dist/credentials/GithubIssuesApi.credentials.js",
-			"dist/credentials/GithubIssuesOAuth2Api.credentials.js"
+			"dist/credentials/KeywordsAIApi.credentials.js"
 		],
 		"nodes": [
-			"dist/nodes/GithubIssues/GithubIssues.node.js",
-			"dist/nodes/Example/Example.node.js"
+			"dist/nodes/KeywordsAi/KeywordsAi.node.js"
 		]
 	},
 	"devDependencies": {
