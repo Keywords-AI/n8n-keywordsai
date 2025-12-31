@@ -1,6 +1,6 @@
 {
-	"name": "n8n-nodes-keywordsai",
-	"version": "0.1.8",
+	"name": "@keywordsai/n8n-nodes-keywordsai",
+	"version": "0.1.9",
 	"description": "n8n node for Keywords AI",
 	"license": "MIT",
 	"homepage": "https://keywordsai.co",
@@ -11,8 +11,8 @@
 		"ai"
 	],
 	"author": {
-		"name": "Keywords AI",
-		"email": "team@keywordsai.co"
+		"name": "Frank Chen",
+		"email": "frank@keywordsai.co"
 	},
 	"repository": {
 		"type": "git",
@@ -28,8 +28,14 @@
 		"prepublishOnly": "n8n-node prerelease"
 	},
 	"files": [
-		"dist"
+		"dist",
+		"credentials",
+		"nodes",
+		"icons"
 	],
+	"publishConfig": {
+		"access": "public"
+	},
 	"n8n": {
 		"n8nNodesApiVersion": 1,
 		"strict": true,
