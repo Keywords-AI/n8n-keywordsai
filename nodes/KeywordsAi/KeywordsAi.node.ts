@@ -5,6 +5,8 @@ import {
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
+	JsonObject,
+	NodeApiError,
 	NodeConnectionTypes,
 } from 'n8n-workflow';
 
@@ -482,14 +484,13 @@ export class KeywordsAi implements INodeType {
 					body,
 					json: true,
 				});
-				returnData.push({ json: responseData as INodeExecutionData['json'] });
+				returnData.push({ json: responseData as INodeExecutionData['json'], pairedItem: { item: i } });
 			} catch (error) {
 				if (this.continueOnFail()) {
-					const err = error as Error;
-					returnData.push({ json: { error: err.message } });
+					returnData.push({ json: { error: (error as Error).message }, pairedItem: { item: i } });
 					continue;
 				}
-				throw error;
+				throw new NodeApiError(this.getNode(), error as JsonObject, { itemIndex: i });
 			}
 		}
 		return [returnData];
