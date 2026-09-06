@@ -29,3 +29,9 @@ Thumbs.db
 
 # n8n
 .n8n/
+
+# Local integration credentials, database, and run evidence
+.env
+.env.*
+!.env.example
+.local/

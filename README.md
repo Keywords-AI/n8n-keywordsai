@@ -1,256 +1,138 @@
-# Keywords AI Node for n8n
+# Respan for n8n
 
-A custom n8n node for integrating Keywords AI's LLM Gateway and Prompt Management features into your n8n workflows.
+Call Respan Gateway and use managed prompts from n8n. This repository includes a community node, a local n8n launcher, and a repeatable integration run with native tracing through `@respan/instrumentation-n8n`.
 
-## Features
+The node appears as **Respan** in the editor:
 
-- 🚀 **Gateway (Standard)**: Make direct LLM calls with custom messages
-- 📝 **Gateway with Prompt**: Use managed prompts from Keywords AI
-- 🔄 **Auto-populated Variables**: Automatically fetch variable names from your prompts
-- 📊 **Dynamic Version Selection**: Choose from live, draft, or specific prompt versions
-- 🔐 **Secure Authentication**: API key-based authentication
-- 🎯 **AI-Ready**: Works as an AI tool in n8n workflows
+| Operation | Use it to |
+| --- | --- |
+| Gateway (Standard) | Send a model and conversation messages to Respan Gateway |
+| Gateway with Prompt | Run a Respan prompt using its deployed, latest, or numbered version |
 
-## Installation
+The local setup uses **Node.js 24**, **n8n 2.37.7**, and three packages built from a sibling Respan checkout. These instructions describe the migrated source in this checkout; they do not require a published instrumentation package.
 
-### Prerequisites
+The launcher and integration commands are source-checkout development workflows. The published community-node artifact provides the Respan node and credentials; it does not bundle n8n, the local instrumentation, or these launch scripts.
 
-- Node.js v18 or higher
-- npm or yarn
-- Keywords AI API Key ([Get one here](https://platform.keywordsai.co))
+## Get started
 
-### Fresh Installation
+Follow [INSTALL.md](https://github.com/respanai/n8n-keywordsai/blob/main/INSTALL.md) to clone the repositories, select Node 24, and build the local Respan packages. After those prerequisites, run these commands from `n8n-keywordsai`:
 
-1. **Clone the repository:**
-   ```bash
-   git clone <your-repo-url>
-   cd n8n-keywordsai
-   ```
+```bash
+npm ci
+npm run build
+npm run integration
+```
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+The runner reads `RESPAN_API_KEY` from your environment or the sibling `respan/.env`. It starts an isolated n8n instance and executes two webhook workflows:
 
-3. **Build the node:**
-   ```bash
-   npm run build
-   ```
+1. Gateway requests an exact marker from `gpt-4o-mini` and checks its response and token usage.
+2. Invalid metadata verifies an expected local validation error before a Gateway request.
 
-4. **Link to n8n:**
-   ```bash
-   # Link the package globally
-   npm link
-   
-   # Create n8n custom directory if it doesn't exist
-   mkdir -p ~/.n8n/custom
-   cd ~/.n8n/custom
-   
-   # Initialize if package.json doesn't exist
-   npm init -y
-   
-   # Link the Keywords AI node
-   npm link n8n-nodes-keywordsai
-   ```
+The first workflow makes one billable model request. Both executions export native traces. The runner stops n8n when finished and prints its evidence path.
 
-5. **Start n8n:**
-   ```bash
-   npx n8n start
-   ```
+To select another dotenv file or an available model:
 
-6. **Access n8n:**
-   Open http://localhost:5678 in your browser
+```bash
+RESPAN_ENV_FILE=/absolute/path/to/respan.env npm run integration
+RESPAN_MODEL=gpt-4o-mini npm run integration
+```
 
-## Usage
+Your Respan account must have access to the selected model. The dotenv file is parsed as data; there is no need to source it into a shell.
 
-### Setup Credentials
+## Use the node in the editor
 
-1. In n8n, go to **Settings** → **Credentials**
-2. Click **+ Add Credential**
-3. Search for **"Keywords AI"**
-4. Enter your API Key
-5. Click **Test** to verify
-6. Click **Save**
+```bash
+npm start
+```
+
+Open [http://127.0.0.1:5679](http://127.0.0.1:5679), complete local owner setup if prompted, and create a **Respan API** credential with your key. The launcher's key configures trace export; a new editor database still needs its own node credential.
+
+Create **Manual Trigger → Respan**, select the credential, and choose an operation.
 
 ### Gateway (Standard)
 
-Direct LLM calls without using saved prompts:
+For a small first request, set:
 
-1. Add **Keywords AI** node to your workflow
-2. Select **"Gateway (Standard)"**
-3. Configure:
-   - **Model**: `gpt-4o-mini` (or any supported model)
-   - **System Message**: Your system prompt
-   - **Messages**: Add user/assistant messages
-4. Execute the node
+| Field | Example |
+| --- | --- |
+| Resource | Gateway (Standard) |
+| Model | `gpt-4o-mini` |
+| System Message | `Answer briefly.` |
+| Messages → Role | User |
+| Messages → Content | `What is distributed tracing?` |
+
+Under **Additional Fields → Model Parameters (JSON)**, supply parameters accepted by the selected model:
+
+```json
+{"temperature":0,"max_tokens":100}
+```
+
+Execute the workflow. Each input item produces a JSON response containing the completion and provider usage. Later nodes can read the reply with `{{ $json.choices[0].message.content }}`.
 
 ### Gateway with Prompt
 
-Use your managed prompts from Keywords AI:
+1. Choose **Gateway with Prompt** and select **Prompt Name or ID**.
+2. Select **Version Name or ID** using the behavior below.
+3. Add a value for each required prompt variable under **Variables**.
+4. Optionally use **Model Parameters (JSON)** to patch the saved model configuration.
+5. Execute the workflow and inspect the response.
 
-1. Add **Keywords AI** node to your workflow
-2. Select **"Gateway with Prompt"**
-3. Configure:
-   - **Prompt Name or ID**: Select from dropdown (auto-populated)
-   - **Version**: Choose version (auto-populated)
-   - **Variables**: Fill in values (names auto-populated from prompt)
-4. Execute the node
+| Version choice | Behavior |
+| --- | --- |
+| Deployed Version | Uses the prompt's deployed version; a deployed version must exist |
+| Latest Version (Including Draft) | Uses the highest numbered version, which may be a draft |
+| A numbered version | Uses that specific version |
 
-### Observability & Tracking
+Variable names must be nonempty and unique. Define message templates in Respan; `messages` and `input` are not accepted in a managed prompt's Model Parameters. Requests use prompt schema v2 with `variables` and a configuration `patch`.
 
-Track and monitor your LLM calls with built-in observability parameters:
+The automated live runner exercises Gateway (Standard). Managed prompt request construction and loaders have regression tests; live prompt execution and editor dropdown interaction remain separate checks in [VALIDATION.md](https://github.com/respanai/n8n-keywordsai/blob/main/VALIDATION.md).
 
-- **Metadata**: Custom key-value pairs for reference
-- **Custom Identifier**: Fast, indexed tags for log filtering
-- **Customer Identifier**: Track per-user usage and costs
-- **Customer Params**: Detailed user info with budget tracking
-- **Request Breakdown**: Get metrics (tokens, cost, latency) in response
+### Optional request fields
 
-See [OBSERVABILITY_GUIDE.md](./OBSERVABILITY_GUIDE.md) for detailed documentation.
+| Additional field | Purpose |
+| --- | --- |
+| Metadata (JSON) | Attach a JSON object to the Gateway request log |
+| Custom Identifier | Set a request correlation value for log lookup |
+| Customer Identifier | Associate the request with an end user |
+| Customer Params (JSON) | Supply supported customer attributes as a JSON object |
+| Request Breakdown | Include request metrics and diagnostics in the response |
 
-### Example Workflow
+For example, Metadata can be `{"workflow":"support-demo","scenario":"gateway"}`. Object fields reject arrays, primitive values, and malformed JSON. Streaming is unsupported; the node returns a complete JSON response for each item.
 
-```
-Manual Trigger → Keywords AI → Send Email
-```
+## Find executions and traces
 
-## Development
-
-### Project Structure
-
-```
-n8n-keywordsai/
-├── nodes/
-│   └── KeywordsAi/
-│       ├── KeywordsAi.node.ts       # Main node logic
-│       └── KeywordsAi.node.json     # Node metadata
-├── credentials/
-│   └── KeywordsAIApi.credentials.ts # Credentials definition
-├── icons/
-│   ├── keywordsai.svg              # Light theme icon
-│   └── keywordsai.dark.svg         # Dark theme icon
-├── dist/                            # Compiled output (gitignored)
-├── package.json
-└── README.md
-```
-
-### Build Commands
+The editor uses `.local/n8n`. Each automated run creates its own database under `.local/runs/<run-id>/state`. To inspect one in the editor, substitute its printed run ID:
 
 ```bash
-# Build the node
-npm run build
+N8N_USER_FOLDER="$PWD/.local/runs/<run-id>/state" npm start
+```
 
-# Lint the code
+Native tracing records the workflow and its nodes. The Gateway model request is a separate Respan log; the verified run does not have an LLM child inside the native tree. [OBSERVABILITY_GUIDE.md](https://github.com/respanai/n8n-keywordsai/blob/main/OBSERVABILITY_GUIDE.md) explains the expected tree, MCP queries, evidence files, and visibility limits.
+
+## Upgrade an existing workflow
+
+Read [MIGRATION.md](https://github.com/respanai/n8n-keywordsai/blob/main/MIGRATION.md) before importing older workflows. The package name `@keywordsai/n8n-nodes-keywordsai`, node name `keywordsAi`, and credential type `keywordsAIApi` are retained for compatibility. Their spelling is intentional.
+
+The local launcher registers `CUSTOM.keywordsAi`. Community-package workflow exports may need their full node type changed for this local setup. Review saved legacy streaming and prompt override settings as well.
+
+## Development and guides
+
+```bash
+npm test
 npm run lint
-
-# Auto-fix linting issues
-npm run lint:fix
-
-# Watch mode (development)
-npm run watch
 ```
 
-### Making Changes
+`npm test` builds the node and runs local regression tests. The live integration is a separate command.
 
-1. Make your changes to the TypeScript files
-2. Build: `npm run build`
-3. Restart n8n to see changes
+| Guide | Contents |
+| --- | --- |
+| [Installation](https://github.com/respanai/n8n-keywordsai/blob/main/INSTALL.md) | Repositories, builds, credentials, configuration, troubleshooting |
+| [Migration](https://github.com/respanai/n8n-keywordsai/blob/main/MIGRATION.md) | Saved workflow compatibility and removed settings |
+| [Observability](https://github.com/respanai/n8n-keywordsai/blob/main/OBSERVABILITY_GUIDE.md) | Native traces, Gateway logs, and MCP inspection |
+| [Command reference](https://github.com/respanai/n8n-keywordsai/blob/main/COMMANDS_CHEATSHEET.md) | Daily development and local-run commands |
+| [Contributing](https://github.com/respanai/n8n-keywordsai/blob/main/CONTRIBUTING.md) | Change scope, checks, and evidence requirements |
+| [Project status](https://github.com/respanai/n8n-keywordsai/blob/main/PROJECT_STATUS.md) | Implemented behavior and remaining coverage |
+| [Validation record](https://github.com/respanai/n8n-keywordsai/blob/main/VALIDATION.md) | Dated live-run results and exact identifiers |
+| [Changelog](https://github.com/respanai/n8n-keywordsai/blob/main/CHANGELOG.md) | Unreleased changes and historical releases |
 
-### Clean Reinstall
-
-If you need to start fresh:
-
-```bash
-# In the project directory
-cd /path/to/n8n-keywordsai
-
-# Remove build artifacts and dependencies
-rm -rf dist node_modules package-lock.json
-
-# Clear npm cache
-npm cache clean --force
-
-# Reinstall
-npm install
-
-# Rebuild
-npm run build
-
-# Relink
-npm link
-cd ~/.n8n/custom
-npm link n8n-nodes-keywordsai
-
-# Restart n8n
-npx n8n start
-```
-
-## API Reference
-
-This node uses the following Keywords AI API endpoints:
-
-- `GET /api/prompts/` - List all prompts
-- `GET /api/prompts/<prompt_id>/versions/` - List prompt versions
-- `GET /api/prompts/<prompt_id>/versions/<version>/` - Get specific version
-- `POST /api/chat/completions` - Make LLM calls
-
-## Troubleshooting
-
-### Node not showing in n8n
-
-1. Ensure the node is built: `npm run build`
-2. Check the link: `cd ~/.n8n/custom && npm list n8n-nodes-keywordsai`
-3. Clear n8n cache: `rm -rf ~/.n8n/cache`
-4. Restart n8n
-
-### Variables not loading
-
-Make sure you select:
-1. A **Prompt** first
-2. Then a **Version**
-
-Variables load after version selection.
-
-### Build errors
-
-```bash
-# Clean everything and rebuild
-rm -rf dist node_modules
-npm install
-npm run build
-```
-
-### npm cache issues
-
-```bash
-npm cache clean --force
-rm -rf ~/.npm/_npx
-```
-
-## Documentation
-
-- [Keywords AI Documentation](https://docs.keywordsai.co)
-- [Keywords AI Platform](https://platform.keywordsai.co)
-- [n8n Community Nodes Guide](https://docs.n8n.io/integrations/community-nodes/)
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## License
-
-[Your License Here]
-
-## Support
-
-For issues and questions:
-- Keywords AI: [support@keywordsai.co](mailto:support@keywordsai.co)
-- GitHub Issues: [Create an issue](https://github.com/your-repo/issues)
-
-## Credits
-
-Built with ❤️ for the n8n and Keywords AI communities.
+Repository: [respanai/n8n-keywordsai](https://github.com/respanai/n8n-keywordsai). See [LICENSE.md](https://github.com/respanai/n8n-keywordsai/blob/main/LICENSE.md) and [CODE_OF_CONDUCT.md](https://github.com/respanai/n8n-keywordsai/blob/main/CODE_OF_CONDUCT.md) for licensing and participation guidelines.

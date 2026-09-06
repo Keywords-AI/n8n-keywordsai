@@ -1,253 +1,73 @@
-# Commands Cheat Sheet
+# Local command reference
 
-Quick reference for common operations with the Keywords AI node.
+Run these commands from the migrated `n8n-keywordsai` checkout with Node 24 selected. Follow [INSTALL.md](INSTALL.md) once to prepare and build the sibling Respan packages before installing this repository.
 
-## 📦 Installation
+## Install, build, and check
 
-```bash
-# Clone repository
-git clone <repo-url>
-cd n8n-keywordsai
+| Command | Purpose |
+| --- | --- |
+| `nvm use` | Select Node 24 from `.nvmrc`; use `nvm install 24` first if needed. |
+| `npm ci` | Install the locked dependency graph, including n8n `2.37.7` and the three local Respan links. |
+| `npm run build` | Compile the community node and credentials into `dist`. |
+| `npm test` | Build the node and run local regression tests; no live provider call. |
+| `npm run lint` | Check node conventions. |
+| `npm run lint:fix` | Apply available lint fixes; inspect the resulting diff. |
+| `npm run build:watch` | Recompile TypeScript while editing; restart n8n to load changes. |
+| `npm ls --depth=0 n8n @respan/instrumentation-n8n @respan/tracing @respan/respan-sdk` | Inspect the installed runtime and local package links. |
 
-# Install dependencies
-npm install
+Use the repository's `.npmrc` and lockfile together. `npm ci` replaces this repository's `node_modules`; it leaves the sibling source checkouts intact. To rebuild linked packages after a source change, use the Yarn commands or the existing-workspace compiler fallback in [INSTALL.md](INSTALL.md#2-build-the-respan-packages).
 
-# Build the node
-npm run build
-
-# Link to n8n
-npm link
-cd ~/.n8n/custom && npm link n8n-nodes-keywordsai
-
-# Start n8n
-npx n8n start
-```
-
-## 🔨 Development
+## Run the editor
 
 ```bash
-# Build
-npm run build
-
-# Lint
-npm run lint
-
-# Auto-fix linting
-npm run lint:fix
-
-# Watch mode (auto-rebuild on changes)
-npm run build:watch
+npm start
 ```
 
-## 🧹 Clean Up
+Open [http://127.0.0.1:5679](http://127.0.0.1:5679). This uses `.local/n8n` for state, loads the built community node, and enables native tracing. Create a Respan API credential in the editor for your own workflows.
+
+Read the trace-export key from a different dotenv file:
 
 ```bash
-# Remove build artifacts
-rm -rf dist
-
-# Remove dependencies
-rm -rf node_modules
-
-# Full clean
-rm -rf dist node_modules package-lock.json
-
-# Clear npm cache
-npm cache clean --force
-
-# Clear n8n cache
-rm -rf ~/.n8n/cache
+RESPAN_ENV_FILE=/absolute/path/to/respan.env npm start
 ```
 
-## 🔄 Reinstall
+Use another local HTTP/broker pair:
 
 ```bash
-# Full reinstall
-rm -rf dist node_modules package-lock.json
-npm install
-npm run build
-npm link
-cd ~/.n8n/custom && npm link n8n-nodes-keywordsai
+N8N_PORT=5689 N8N_RUNNERS_BROKER_PORT=5690 npm start
 ```
 
-## 🔗 Linking
+The default key file is `../respan/.env`. Only its `RESPAN_API_KEY` and `RESPAN_BASE_URL` settings are read, with process environment values taking precedence. See the complete [configuration table](INSTALL.md#4-configure-the-respan-key) for model, endpoint, state, and tracing options.
+
+## Run the live integration
 
 ```bash
-# Link from project directory
-cd /path/to/n8n-keywordsai
-npm link
-
-# Link to n8n
-cd ~/.n8n/custom
-npm link n8n-nodes-keywordsai
-
-# Verify link
-npm list n8n-nodes-keywordsai
-
-# Unlink
-cd ~/.n8n/custom
-npm unlink n8n-nodes-keywordsai
+npm run integration
 ```
 
-## 🚀 n8n Operations
+Each invocation creates a new `.local/runs/<run-id>/`, performs one provider-backed Gateway request and one local validation-error scenario, then stops n8n. To choose a model and ports:
 
 ```bash
-# Start n8n
-npx n8n start
-
-# Start n8n with custom port
-npx n8n start --port 5679
-
-# Start n8n in tunnel mode (public URL)
-npx n8n start --tunnel
-
-# Stop n8n
-# Press Ctrl+C in the terminal
+RESPAN_MODEL=gpt-4o-mini N8N_PORT=5689 \
+  N8N_RUNNERS_BROKER_PORT=5690 npm run integration
 ```
 
-## 🐛 Troubleshooting
+The runner prints the `evidence.json` path. Review its execution checks, then use its exact trace IDs, Gateway log ID, and time range for the separate Respan checks in [OBSERVABILITY_GUIDE.md](OBSERVABILITY_GUIDE.md). `PENDING_MCP_REVIEW` is not a platform pass.
+
+## Inspect a completed run
+
+Replace `<run-id>` with an existing run directory name:
 
 ```bash
-# Node not appearing?
-rm -rf ~/.n8n/cache
-# Then restart n8n
-
-# Build failing?
-rm -rf dist node_modules
-npm install
-npm run build
-
-# npm cache issues?
-npm cache clean --force
-rm -rf ~/.npm/_npx
-
-# Link issues?
-npm unlink n8n-nodes-keywordsai
-cd /path/to/n8n-keywordsai && npm link
-cd ~/.n8n/custom && npm link n8n-nodes-keywordsai
+N8N_USER_FOLDER="$PWD/.local/runs/<run-id>/state" npm start
 ```
 
-## 📊 Project Info
+The editor opens the saved workflows, credential, and executions without automatically invoking the webhooks again. Use only one n8n process per state directory. Stop it with Ctrl-C before using the same ports for another process. `N8N_USER_FOLDER` applies to `npm start`; the integration runner always creates separate state.
 
-```bash
-# Check Node.js version
-node --version
+Keep `.local/` private because it contains execution data and n8n's credential encryption configuration. Saved responses and trace evidence can also contain workflow content.
 
-# Check npm version
-npm --version
+## Choose the maintained launch command
 
-# List installed packages
-npm list --depth=0
+Use `npm start` for this repository's instrumented editor and `npm run integration` for its repeatable tracing check. The inherited `npm run dev` invokes the generic n8n node CLI and does not apply this repository's launcher configuration. `n8n execute` does not start the native OTel backend used by the tracing check.
 
-# Check for outdated packages
-npm outdated
-
-# Audit for vulnerabilities
-npm audit
-```
-
-## 🔍 Testing
-
-```bash
-# Test API connection (replace with your key)
-curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://api.keywordsai.co/api/prompts/
-
-# Check if node is linked
-cd ~/.n8n/custom
-npm list n8n-nodes-keywordsai
-```
-
-## 📝 Git Operations
-
-```bash
-# Check status
-git status
-
-# Add all files
-git add .
-
-# Commit
-git commit -m "Your message"
-
-# Push
-git push origin main
-
-# Pull latest
-git pull origin main
-
-# Create new branch
-git checkout -b feature-name
-```
-
-## 📁 Directory Reference
-
-| Path | Purpose |
-|------|---------|
-| `/path/to/n8n-keywordsai` | Your node source code |
-| `~/.n8n/custom` | n8n custom nodes directory |
-| `~/.n8n/cache` | n8n cache (safe to delete) |
-| `~/.npm` | npm global cache |
-
-## 🔑 Environment Variables
-
-```bash
-# Set custom n8n directory
-export N8N_USER_FOLDER=~/my-n8n
-
-# Set custom port
-export N8N_PORT=5679
-
-# Enable debug mode
-export N8N_LOG_LEVEL=debug
-```
-
-## 📱 Quick Workflows
-
-### After Making Code Changes
-```bash
-npm run build
-# Restart n8n (Ctrl+C then npx n8n start)
-```
-
-### Fresh Install on New Machine
-```bash
-git clone <repo>
-cd n8n-keywordsai
-npm install && npm run build && npm link
-cd ~/.n8n/custom && npm link n8n-nodes-keywordsai
-npx n8n start
-```
-
-### Complete Reset
-```bash
-# Stop n8n first (Ctrl+C)
-cd ~/.n8n/custom && npm unlink n8n-nodes-keywordsai
-cd /path/to/n8n-keywordsai
-rm -rf dist node_modules
-npm cache clean --force
-npm install && npm run build && npm link
-cd ~/.n8n/custom && npm link n8n-nodes-keywordsai
-npx n8n start
-```
-
-## 🌐 URLs
-
-| Service | URL |
-|---------|-----|
-| Local n8n | http://localhost:5678 |
-| Keywords AI Platform | https://platform.keywordsai.co |
-| Keywords AI Docs | https://docs.keywordsai.co |
-| n8n Docs | https://docs.n8n.io |
-
-## 💡 Tips
-
-- Always `npm run build` after code changes
-- Restart n8n to see node updates
-- Clear `~/.n8n/cache` if node doesn't appear
-- Use `npx n8n start --tunnel` for public access
-- Check `npm list n8n-nodes-keywordsai` to verify link
-
----
-
-**Pro Tip**: Save this file for quick reference during development!
-
+`release` and `prepublishOnly` are package publication scripts, not setup steps. The local instrumentation build does not require publishing either repository.

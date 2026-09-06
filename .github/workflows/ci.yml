@@ -11,18 +11,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out n8n integration
+        uses: actions/checkout@v4
+        with:
+          path: n8n-keywordsai
+
+      - name: Check out Respan n8n instrumentation
+        uses: actions/checkout@v4
+        with:
+          repository: Nightingalelyy/respan
+          ref: 5769847d99f808ab3fb15814af97f2b794ccc1d6
+          path: respan
 
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: n8n-keywordsai/package-lock.json
 
-      - name: Install dependencies
-        run: 'npm ci'
+      - name: Install and build local Respan packages
+        working-directory: respan/javascript-sdks
+        run: |
+          npx --yes @yarnpkg/cli-dist@4.9.2 install --immutable
+          npx --yes @yarnpkg/cli-dist@4.9.2 workspace @respan/respan-sdk build
+          npx --yes @yarnpkg/cli-dist@4.9.2 workspace @respan/tracing build
+          npx --yes @yarnpkg/cli-dist@4.9.2 workspace @respan/instrumentation-n8n build
+
+      - name: Install integration dependencies
+        working-directory: n8n-keywordsai
+        run: npm ci
+
+      - name: Run tests
+        working-directory: n8n-keywordsai
+        run: npm test
 
       - name: Run lint
-        run: 'npm run lint'
+        working-directory: n8n-keywordsai
+        run: npm run lint
 
-      - name: Run build
-        run: 'npm run build'
+      - name: Check package contents
+        working-directory: n8n-keywordsai
+        run: npm pack --dry-run
