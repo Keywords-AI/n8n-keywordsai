@@ -1,4 +1,5 @@
 import {
+	IDataObject,
 	IExecuteFunctions,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
@@ -8,18 +9,29 @@ import {
 	JsonObject,
 	NodeApiError,
 	NodeConnectionTypes,
+	NodeOperationError,
 } from 'n8n-workflow';
+import {
+	loadCollection,
+	parseJsonObject,
+	promptVersion,
+	RESPAN_API_BASE_URL,
+} from './GenericFunctions';
 
 export class KeywordsAi implements INodeType {
 	description: INodeTypeDescription = {
-		displayName: 'Keywords AI',
+		displayName: 'Respan',
 		name: 'keywordsAi',
-		icon: { light: 'file:../../icons/keywordsai.svg', dark: 'file:../../icons/keywordsai.dark.svg' },
+		icon: {
+			light: 'file:../../icons/keywordsai.svg',
+			dark: 'file:../../icons/keywordsai.dark.svg',
+		},
 		group: ['transform'],
 		version: 1,
-		description: 'Keywords AI API integration',
+		description: 'Respan API integration',
+		subtitle: '={{$parameter["resource"] === "gatewayPrompt" ? "Managed Prompt" : "Gateway"}}',
 		defaults: {
-			name: 'Keywords AI',
+			name: 'Respan',
 		},
 		inputs: [NodeConnectionTypes.Main],
 		outputs: [NodeConnectionTypes.Main],
@@ -44,7 +56,7 @@ export class KeywordsAi implements INodeType {
 					{
 						name: 'Gateway with Prompt',
 						value: 'gatewayPrompt',
-						description: 'Use a managed prompt from Keywords AI',
+						description: 'Use a managed prompt from Respan',
 					},
 				],
 				default: 'gatewayPrompt',
@@ -62,7 +74,7 @@ export class KeywordsAi implements INodeType {
 					},
 				},
 				default: 'gpt-4o-mini',
-				description: 'The model to use (e.g., gpt-4o, claude-3-5-sonnet)',
+				description: 'A model ID supported by your Respan Gateway provider configuration',
 			},
 			{
 				displayName: 'System Message',
@@ -136,7 +148,8 @@ export class KeywordsAi implements INodeType {
 					},
 				},
 				default: '',
-				description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+				description:
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 			},
 			{
 				displayName: 'Version Name or ID',
@@ -152,7 +165,8 @@ export class KeywordsAi implements INodeType {
 					},
 				},
 				default: '',
-				description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+				description:
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 			},
 			{
 				displayName: 'Variables',
@@ -197,18 +211,6 @@ export class KeywordsAi implements INodeType {
 				],
 				description: 'Fill in values for variables defined in your prompt',
 			},
-			{
-				displayName: 'Override Prompt Config',
-				name: 'override',
-				type: 'boolean',
-				displayOptions: {
-					show: {
-						resource: ['gatewayPrompt'],
-					},
-				},
-				default: false,
-				description: 'Whether your prompt configuration overrides parameters like model and messages',
-			},
 
 			// SHARED ADDITIONAL FIELDS
 			{
@@ -237,35 +239,32 @@ export class KeywordsAi implements INodeType {
 						name: 'customerParams',
 						type: 'string',
 						default: '',
-						description: 'JSON object with customer parameters like name, email, budget (e.g. {"customer_identifier": "user_123", "name": "John", "email": "john@example.com"})',
+						description:
+							'JSON object with customer parameters like name, email, budget (e.g. {"customer_identifier": "user_123", "name": "John", "email": "john@example.com"})',
 					},
 					{
 						displayName: 'Metadata (JSON)',
 						name: 'metadata',
 						type: 'string',
 						default: '',
-						description: 'JSON object with key-value pairs for reference (e.g. {"session_id": "123", "user_type": "premium"})',
+						description:
+							'JSON object with key-value pairs for reference (e.g. {"session_id": "123", "user_type": "premium"})',
 					},
 					{
-						displayName: 'Override Params (JSON)',
+						displayName: 'Model Parameters (JSON)',
 						name: 'overrideParamsJson',
 						type: 'string',
 						default: '',
-						description: 'JSON object with parameters (e.g. {"temperature": 0.5})',
+						description:
+							'Model parameters such as temperature or max_tokens. For managed prompts these patch the saved configuration; messages and input must stay in the prompt template.',
 					},
 					{
 						displayName: 'Request Breakdown',
 						name: 'requestBreakdown',
 						type: 'boolean',
 						default: false,
-						description: 'Whether to return detailed metrics in the response (tokens, cost, latency, etc.)',
-					},
-					{
-						displayName: 'Stream',
-						name: 'stream',
-						type: 'boolean',
-						default: false,
-						description: 'Whether to stream back partial progress token by token',
+						description:
+							'Whether to return detailed metrics in the response (tokens, cost, latency, etc.)',
 					},
 				],
 			},
@@ -276,110 +275,71 @@ export class KeywordsAi implements INodeType {
 	methods = {
 		loadOptions: {
 			async getPrompts(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				const responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'keywordsAIApi', {
-					method: 'GET',
-					baseURL: 'https://api.keywordsai.co/api',
-					url: '/prompts/',
-					json: true,
+				const prompts = await loadCollection(this, '/prompts/', 'prompts');
+				return prompts.flatMap((prompt) => {
+					const id = prompt.prompt_id ?? prompt.id;
+					return typeof id === 'string' && id
+						? [
+								{
+									name: typeof prompt.name === 'string' && prompt.name ? prompt.name : id,
+									value: id,
+								},
+							]
+						: [];
 				});
-				
-				let prompts: Array<{ name?: string; prompt_id: string }> = [];
-				
-				if (Array.isArray(responseData)) {
-					prompts = responseData as Array<{ name?: string; prompt_id: string }>;
-				} else if (responseData && typeof responseData === 'object') {
-					const data = responseData as Record<string, unknown>;
-					if (Array.isArray(data.results)) {
-						prompts = data.results;
-					} else if (Array.isArray(data.data)) {
-						prompts = data.data;
-					} else if (Array.isArray(data.prompts)) {
-						prompts = data.prompts;
-					}
-				}
-				
-				return prompts.map((prompt) => ({
-					name: prompt.name || prompt.prompt_id,
-					value: prompt.prompt_id,
-				}));
 			},
-			
+
 			async getVersions(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const promptId = this.getCurrentNodeParameter('promptId') as string;
 				if (!promptId) return [];
-				
-				const responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'keywordsAIApi', {
-					method: 'GET',
-					baseURL: 'https://api.keywordsai.co/api',
-					url: `/prompts/${promptId}/versions/`,
-					json: true,
-				});
-				
-				let versions: Array<{ version: number; readonly?: boolean }> = [];
-				
-				if (Array.isArray(responseData)) {
-					versions = responseData as Array<{ version: number; readonly?: boolean }>;
-				} else if (responseData && typeof responseData === 'object') {
-					const data = responseData as Record<string, unknown>;
-					if (Array.isArray(data.results)) {
-						versions = data.results;
-					} else if (Array.isArray(data.data)) {
-						versions = data.data;
-					} else if (Array.isArray(data.versions)) {
-						versions = data.versions;
-					}
+				const versions = await loadCollection(
+					this,
+					`/prompts/${encodeURIComponent(promptId)}/versions/`,
+					'versions',
+				);
+				const options: INodePropertyOptions[] = [
+					{ name: 'Deployed Version', value: '' },
+					{ name: 'Latest Version (Including Draft)', value: 'latest' },
+				];
+				for (const version of versions) {
+					const number = promptVersion(version.version);
+					if (typeof number !== 'number') continue;
+					const status = version.is_deployed
+						? ' (Deployed)'
+						: version.readonly
+							? ' (Committed)'
+							: ' (Draft)';
+					options.push({ name: `Version ${number}${status}`, value: number });
 				}
-				
-				const options: INodePropertyOptions[] = versions.map((v) => ({
-					name: `Version ${v.version}${v.readonly ? ' (Live)' : ''}`,
-					value: v.version,
-				}));
-				options.unshift({ name: 'Latest (Draft)', value: 'latest' });
 				return options;
 			},
-			
+
 			async getVariables(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const promptId = this.getCurrentNodeParameter('promptId') as string;
-				const version = this.getCurrentNodeParameter('version') as string;
-				
-				if (!promptId || !version) return [];
-				
-				// For "latest", we need to get the current version from the versions list
-				let versionNumber = version;
-				if (version === 'latest') {
-					const versionsData = await this.helpers.httpRequestWithAuthentication.call(this, 'keywordsAIApi', {
-						method: 'GET',
-						baseURL: 'https://api.keywordsai.co/api',
-						url: `/prompts/${promptId}/versions/`,
-						json: true,
-					});
-					
-					let versions: Array<{ version: number }> = [];
-					const data = versionsData as Record<string, unknown>;
-					if (Array.isArray(data.results)) {
-						versions = data.results;
+				if (!promptId) return [];
+				let version = promptVersion(this.getCurrentNodeParameter('version'));
+				const path = `/prompts/${encodeURIComponent(promptId)}/versions/`;
+				if (version === undefined || version === 'latest') {
+					const versions = await loadCollection(this, path, 'versions');
+					if (version === 'latest') {
+						const numbers = versions
+							.map((entry) => promptVersion(entry.version))
+							.filter((number): number is number => typeof number === 'number');
+						version = numbers.length ? Math.max(...numbers) : undefined;
+					} else {
+						version = promptVersion(versions.find((entry) => entry.is_deployed === true)?.version);
 					}
-					
-					if (versions.length > 0) {
-						// Get the highest version number
-						versionNumber = Math.max(...versions.map(v => v.version)).toString();
-					}
+					if (typeof version !== 'number') return [];
 				}
-				
-				const versionData = await this.helpers.httpRequestWithAuthentication.call(this, 'keywordsAIApi', {
+				const data = (await this.helpers.httpRequestWithAuthentication.call(this, 'keywordsAIApi', {
 					method: 'GET',
-					baseURL: 'https://api.keywordsai.co/api',
-					url: `/prompts/${promptId}/versions/${versionNumber}/`,
+					baseURL: RESPAN_API_BASE_URL,
+					url: `${path}${version}/`,
 					json: true,
-				});
-				
-				const data = versionData as { variables?: Record<string, string> };
-				const variables = data.variables || {};
-				
-				return Object.keys(variables).map((varName) => ({
-					name: varName,
-					value: varName,
-				}));
+				})) as { variables?: unknown };
+				const variables = data.variables;
+				if (!variables || typeof variables !== 'object' || Array.isArray(variables)) return [];
+				return Object.keys(variables).map((name) => ({ name, value: name }));
 			},
 		},
 	};
@@ -391,7 +351,7 @@ export class KeywordsAi implements INodeType {
 		for (let i = 0; i < items.length; i++) {
 			try {
 				const resource = this.getNodeParameter('resource', i) as string;
-				const additionalFields = this.getNodeParameter('additionalFields', i) as {
+				const additionalFields = this.getNodeParameter('additionalFields', i, {}) as {
 					overrideParamsJson?: string;
 					stream?: boolean;
 					metadata?: string;
@@ -400,96 +360,122 @@ export class KeywordsAi implements INodeType {
 					customerParams?: string;
 					requestBreakdown?: boolean;
 				};
-				let body: {
-					model?: string;
-					messages?: Array<{ role: string; content: string }>;
-					prompt?: {
-						prompt_id: string;
-						variables: { [key: string]: string };
-						override: boolean;
-						version?: string | number;
-						override_params?: object;
-					};
-					stream?: boolean;
-					metadata?: object;
-					custom_identifier?: string;
-					customer_identifier?: string;
-					customer_params?: object;
-					request_breakdown?: boolean;
-				} = {};
-
+				const params = additionalFields.overrideParamsJson
+					? parseJsonObject(this, additionalFields.overrideParamsJson, 'Model Parameters', i)
+					: {};
+				if (additionalFields.stream || (params.stream !== undefined && params.stream !== false)) {
+					throw new NodeOperationError(
+						this.getNode(),
+						'Streaming is not supported by the Respan node. Remove stream or set it to false in the saved workflow and Model Parameters.',
+						{ itemIndex: i },
+					);
+				}
+				let body: IDataObject;
 				if (resource === 'gateway') {
 					const model = this.getNodeParameter('model', i) as string;
-					const systemMessage = this.getNodeParameter('systemMessage', i) as string;
-					const messagesData = this.getNodeParameter('messages', i) as {
+					const systemMessage = this.getNodeParameter('systemMessage', i, '') as string;
+					const messagesData = this.getNodeParameter('messages', i, {}) as {
 						messageValues?: Array<{ role: string; content: string }>;
 					};
-
-					const messages = [{ role: 'system', content: systemMessage }];
-					if (messagesData?.messageValues) {
-						for (const m of messagesData.messageValues) {
-							messages.push({ role: m.role, content: m.content });
-						}
+					const messages = systemMessage ? [{ role: 'system', content: systemMessage }] : [];
+					for (const message of messagesData.messageValues ?? []) {
+						messages.push({ role: message.role, content: message.content });
 					}
-					body = { model, messages };
-				} else {
+					body = { model, messages, ...params, stream: false };
+				} else if (resource === 'gatewayPrompt') {
+					if (this.getNodeParameter('override', i, false)) {
+						throw new NodeOperationError(
+							this.getNode(),
+							'The legacy Override Prompt Config option is unsupported. Remove override or set it to false in the saved workflow; use Model Parameters to patch the prompt configuration.',
+							{ itemIndex: i },
+						);
+					}
+					if ('messages' in params || 'input' in params) {
+						throw new NodeOperationError(
+							this.getNode(),
+							'Managed prompt Model Parameters cannot contain messages or input. Update the prompt template and Variables instead.',
+							{ itemIndex: i },
+						);
+					}
 					const promptId = this.getNodeParameter('promptId', i) as string;
-					const variablesData = this.getNodeParameter('variables', i) as {
+					const variablesData = this.getNodeParameter('variables', i, {}) as {
 						variableValues?: Array<{ name: string; value: string }>;
 					};
-					const version = this.getNodeParameter('version', i) as string;
-					const override = this.getNodeParameter('override', i) as boolean;
-
-					const variables: { [key: string]: string } = {};
-					if (variablesData?.variableValues) {
-						for (const v of variablesData.variableValues) {
-							variables[v.name] = v.value;
-						}
+					let version: number | 'latest' | undefined;
+					try {
+						version = promptVersion(this.getNodeParameter('version', i, ''));
+					} catch (error) {
+						throw new NodeOperationError(this.getNode(), error as Error, { itemIndex: i });
 					}
-					body.prompt = { prompt_id: promptId, variables, override };
-					if (version) body.prompt.version = version;
+					const entries = variablesData.variableValues ?? [];
+					if (entries.some((variable) => !variable.name.trim())) {
+						throw new NodeOperationError(this.getNode(), 'Each prompt variable must have a name', {
+							itemIndex: i,
+						});
+					}
+					if (new Set(entries.map((variable) => variable.name)).size !== entries.length) {
+						throw new NodeOperationError(this.getNode(), 'Prompt variable names must be unique', {
+							itemIndex: i,
+						});
+					}
+					const prompt: IDataObject = {
+						prompt_id: promptId,
+						schema_version: 2,
+						variables: Object.fromEntries(
+							entries.map((variable) => [variable.name, variable.value]),
+						),
+						// The saved prompt may enable streaming, which this JSON-returning node cannot consume.
+						patch: { ...params, stream: false },
+					};
+					if (version !== undefined) prompt.version = version;
+					body = { prompt, stream: false };
+				} else {
+					throw new NodeOperationError(this.getNode(), `Unsupported Respan resource: ${resource}`, {
+						itemIndex: i,
+					});
 				}
 
-				// Handle override params
-				if (additionalFields.overrideParamsJson) {
-					const params = JSON.parse(additionalFields.overrideParamsJson);
-					if (resource === 'gatewayPrompt' && body.prompt) body.prompt.override_params = params;
-					else Object.assign(body, params);
-				}
-				
-				// Handle stream
-				if (additionalFields.stream !== undefined) body.stream = additionalFields.stream;
-				
-				// Handle observability parameters
 				if (additionalFields.metadata) {
-					body.metadata = JSON.parse(additionalFields.metadata);
+					body.metadata = parseJsonObject(this, additionalFields.metadata, 'Metadata', i);
 				}
-				if (additionalFields.customIdentifier) {
+				if (additionalFields.customIdentifier)
 					body.custom_identifier = additionalFields.customIdentifier;
-				}
-				if (additionalFields.customerIdentifier) {
+				if (additionalFields.customerIdentifier)
 					body.customer_identifier = additionalFields.customerIdentifier;
-				}
 				if (additionalFields.customerParams) {
-					body.customer_params = JSON.parse(additionalFields.customerParams);
+					body.customer_params = parseJsonObject(
+						this,
+						additionalFields.customerParams,
+						'Customer Params',
+						i,
+					);
 				}
-				if (additionalFields.requestBreakdown !== undefined) {
+				if (additionalFields.requestBreakdown !== undefined)
 					body.request_breakdown = additionalFields.requestBreakdown;
-				}
 
-				const responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'keywordsAIApi', {
-					method: 'POST',
-					baseURL: 'https://api.keywordsai.co/api',
-					url: '/chat/completions',
-					body,
-					json: true,
+				const responseData = await this.helpers.httpRequestWithAuthentication.call(
+					this,
+					'keywordsAIApi',
+					{
+						method: 'POST',
+						baseURL: RESPAN_API_BASE_URL,
+						url: '/chat/completions',
+						body,
+						json: true,
+					},
+				);
+				returnData.push({
+					json: responseData as INodeExecutionData['json'],
+					pairedItem: { item: i },
 				});
-				returnData.push({ json: responseData as INodeExecutionData['json'], pairedItem: { item: i } });
 			} catch (error) {
 				if (this.continueOnFail()) {
 					returnData.push({ json: { error: (error as Error).message }, pairedItem: { item: i } });
 					continue;
 				}
+				// This is already an n8n error with its field message and item context.
+				// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
+				if (error instanceof NodeOperationError) throw error;
 				throw new NodeApiError(this.getNode(), error as JsonObject, { itemIndex: i });
 			}
 		}

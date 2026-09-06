@@ -1,14 +1,15 @@
 {
 	"name": "@keywordsai/n8n-nodes-keywordsai",
 	"version": "0.1.11",
-	"description": "n8n node for Keywords AI",
+	"description": "Respan Gateway and managed prompts for n8n, with native OpenTelemetry integration",
 	"license": "MIT",
-	"homepage": "https://keywordsai.co",
+	"homepage": "https://www.respan.ai",
 	"keywords": [
 		"n8n-community-node-package",
 		"keywordsai",
 		"llm",
-		"ai"
+		"ai",
+		"respan"
 	],
 	"author": {
 		"name": "Frank Chen",
@@ -16,7 +17,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/Keywords-AI/n8n-keywordsai"
+		"url": "https://github.com/respanai/n8n-keywordsai"
 	},
 	"scripts": {
 		"build": "n8n-node build",
@@ -25,13 +26,17 @@
 		"lint": "n8n-node lint",
 		"lint:fix": "n8n-node lint --fix",
 		"release": "n8n-node release",
-		"prepublishOnly": "n8n-node prerelease"
+		"prepublishOnly": "n8n-node prerelease",
+		"test": "npm run build && node --test tests/*.test.cjs",
+		"integration": "node scripts/run-integration.mjs",
+		"start": "node scripts/start-n8n.mjs"
 	},
 	"files": [
 		"dist",
 		"credentials",
 		"nodes",
-		"icons"
+		"icons",
+		"*.md"
 	],
 	"publishConfig": {
 		"access": "public"
@@ -47,13 +52,22 @@
 		]
 	},
 	"devDependencies": {
-		"@n8n/node-cli": "*",
+		"@n8n/node-cli": "0.46.2",
 		"eslint": "9.32.0",
 		"prettier": "3.6.2",
 		"release-it": "^19.0.4",
-		"typescript": "5.9.2"
+		"typescript": "5.9.2",
+		"n8n": "2.37.7",
+		"@respan/instrumentation-n8n": "file:../respan/javascript-sdks/instrumentations/respan-instrumentation-n8n",
+		"@respan/respan-sdk": "file:../respan/javascript-sdks/respan-sdk",
+		"@respan/tracing": "file:../respan/javascript-sdks/respan-tracing",
+		"n8n-workflow": "2.37.2",
+		"flatted": "3.4.2"
 	},
 	"peerDependencies": {
 		"n8n-workflow": "*"
+	},
+	"engines": {
+		"node": ">=24.0.0 <25"
 	}
 }

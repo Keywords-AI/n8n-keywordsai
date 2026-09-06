@@ -9,11 +9,11 @@ import type {
 export class KeywordsAIApi implements ICredentialType {
 	name = 'keywordsAIApi';
 
-	displayName = 'Keywords AI API';
+	displayName = 'Respan API';
 
 	icon: Icon = { light: 'file:../icons/keywordsai.svg', dark: 'file:../icons/keywordsai.dark.svg' };
 
-	documentationUrl = 'https://docs.keywordsai.co/get-started/api-keys';
+	documentationUrl = 'https://respan.ai/docs/documentation/admin/respan-api-keys';
 
 	properties: INodeProperties[] = [
 		{
@@ -37,10 +37,9 @@ export class KeywordsAIApi implements ICredentialType {
 
 	test: ICredentialTestRequest = {
 		request: {
-			baseURL: 'https://api.keywordsai.co/api',
+			baseURL: 'https://api.respan.ai/api',
 			url: '/models',
 			method: 'GET',
 		},
 	};
 }
-

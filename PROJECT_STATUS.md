@@ -1,234 +1,55 @@
-# Project Status - Ready for Push
+# Respan migration status
 
-## ✅ Cleaned and Ready
+This repository provides a migrated Respan Gateway and managed-prompt community node, plus a local n8n runtime that loads `@respan/instrumentation-n8n/register`. The community node makes API requests; the instrumentation package adapts n8n's native OpenTelemetry provider and exporter.
 
-This project has been cleaned up and is ready for a fresh Git push and reinstallation.
+Start with [README.md](README.md) and [INSTALL.md](INSTALL.md). For saved Keywords AI workflows, follow [MIGRATION.md](MIGRATION.md).
 
-### What's Included
+## Implemented scope
 
-```
-n8n-keywordsai/
-├── credentials/
-│   └── KeywordsAIApi.credentials.ts     ✅ Keywords AI credentials
-├── nodes/
-│   └── KeywordsAi/
-│       ├── KeywordsAi.node.ts           ✅ Main node implementation
-│       └── KeywordsAi.node.json         ✅ Node metadata
-├── icons/
-│   ├── keywordsai.svg                   ✅ Light theme icon
-│   ├── keywordsai.dark.svg              ✅ Dark theme icon
-│   ├── github.svg                       (legacy, can be removed)
-│   └── github.dark.svg                  (legacy, can be removed)
-├── .gitignore                           ✅ Properly configured
-├── package.json                         ✅ Clean, only Keywords AI node
-├── package-lock.json                    ✅ Included for consistency
-├── tsconfig.json                        ✅ TypeScript configuration
-├── eslint.config.mjs                    ✅ Linting configuration
-├── README.md                            ✅ Comprehensive documentation
-├── INSTALL.md                           ✅ Step-by-step install guide
-├── LICENSE.md                           ✅ License file
-├── CHANGELOG.md                         ✅ Change log
-└── CODE_OF_CONDUCT.md                   ✅ Code of conduct
-```
+| Area | Behavior in this checkout |
+| --- | --- |
+| Runtime | Node.js 24, n8n `2.37.7`, n8n-workflow `2.37.2` |
+| Local packages | Respan SDK, tracing, and n8n instrumentation linked from the sibling `respan` checkout |
+| Gateway | Respan Chat Completions requests with JSON responses and supported request metadata |
+| Managed prompts | Schema version 2, variables, deployed/latest/numeric versions, model-parameter patches, and paginated prompt loading |
+| Input validation | Field-specific errors for malformed or non-object JSON, invalid prompt versions, duplicate variable names, and unsupported legacy settings |
+| Compatibility | Existing package name, node ID `keywordsAi`, and credential ID `keywordsAIApi` retained |
+| Local launcher | Instrumentation preload, loopback-only editor, and configuration read from environment or `../respan/.env` |
+| Integration runner | Isolated n8n state, credential/workflow imports, webhook execution, bounded shutdown, and saved evidence per run |
 
-### What's Excluded (.gitignored)
+The local launcher loads the compiled node as `CUSTOM.keywordsAi`. Saved streaming settings and the old prompt override flag must be removed or set to `false`; see the migration guide for replacement settings.
 
-```
-- dist/                 # Build output
-- node_modules/         # Dependencies
-- *.bak                 # Backup files
-- .DS_Store             # macOS files
-- *.tsbuildinfo         # TypeScript cache
-```
+## Recorded verification — 2026-09-03
 
-## ✅ Verification
+These are the results recorded in [VALIDATION.md](VALIDATION.md), for this local migration. The live run was `respan-n8n-2026-09-03T11-47-05-011Z`, using local Respan commit `145503b1` on `feat/instrumentation-n8n-javascript` and Node.js `24.19.0`.
 
-Build Status: **✅ PASSING**
-```bash
-npm run build  # ✅ Success
-npm run lint   # ✅ No errors
-```
+| Check | Recorded result |
+| --- | --- |
+| Local Respan SDK, tracing, and instrumentation compilation | PASS |
+| n8n instrumentation regression suite | 17/17 PASS |
+| Community-node build and regression suite | 16/16 PASS |
+| Community-node lint | PASS |
+| Local package resolution and npm pack dry run | PASS |
+| Real Gateway webhook workflow | PASS; exact run marker and provider usage returned |
+| Invalid-metadata workflow | PASS; the isolated execution database confirms the expected `NodeOperationError` at `Respan Gateway` |
+| Scoped Respan MCP native tree review | PASS; one workflow root and two task children for each scenario, with the expected success/failure statuses |
+| Scoped Respan MCP Gateway request-log review | PASS for the marker, output, model, provider, usage, cost, and status |
+| Live managed-prompt inference and editor dropdown interaction | NOT RUN; request mapping and loaders have regression coverage |
+| n8n Agent, tool, and memory workflows | NOT RUN in this repository's live integration |
 
-## 📦 Features Implemented
+`npm run integration` records execution checks. It does not run Respan MCP inspection: new runs leave platform checks pending until the corresponding trees and request logs are reviewed. Full acceptance depends on the content checks in [OBSERVABILITY_GUIDE.md](OBSERVABILITY_GUIDE.md).
 
-### 1. Gateway (Standard)
-- ✅ Direct LLM calls
-- ✅ Custom model selection
-- ✅ System message configuration
-- ✅ User/Assistant message history
-- ✅ Override parameters support
+## Outstanding validation and platform limitations
 
-### 2. Gateway with Prompt
-- ✅ Dynamic prompt selection (loads from Keywords AI API)
-- ✅ Dynamic version selection (loads versions for selected prompt)
-- ✅ Auto-populated variable names (no manual entry needed!)
-- ✅ Variable value filling
-- ✅ Prompt override support
-- ✅ "Latest" and specific version selection
+- The Gateway request appeared as a separate platform log without a parent span ID. A joined LLM child under the native workflow trace was not demonstrated.
+- Native workflow/node spans had no request or response bodies. Nested n8n metadata and item counts were not visible in platform trace responses.
+- The platform labeled the deliberate local metadata-validation error `provider_down`. The execution database confirmed the actual configuration error.
+- Individual log-detail requests timed out. The scoped log listing confirmed output and usage but truncated input; complete platform input retrieval remains unverified.
+- n8n emitted a generic OpenTelemetry diagnostic warning and an unused Python-runner warning during the recorded run. Both native trees were confirmed after clean shutdown.
+- Managed-prompt execution and editor interactions need a separate live case using a configured prompt. Agent, tool, and memory coverage needs corresponding workflows.
 
-### 3. Observability Parameters
-- ✅ Metadata (JSON key-value pairs)
-- ✅ Custom Identifier (indexed tags)
-- ✅ Customer Identifier (user tracking)
-- ✅ Customer Params (budget & user details)
-- ✅ Request Breakdown (detailed metrics)
+## Automation and delivery
 
-### 4. Credentials
-- ✅ API Key authentication
-- ✅ Connection test endpoint
-- ✅ Secure storage in n8n
+The checked-in [CI workflow](.github/workflows/ci.yml) selects Node.js 24, checks out the exact green Respan n8n instrumentation revision from [respan PR #410](https://github.com/respanai/respan/pull/410), builds the three linked packages, and runs this repository's tests, lint, and package dry run. [CONTRIBUTING.md](CONTRIBUTING.md) lists the matching local checks.
 
-### 5. Code Quality
-- ✅ TypeScript with strict mode
-- ✅ Full type safety (no `any` types)
-- ✅ n8n linter compliant
-- ✅ Proper error handling
-- ✅ Follows n8n conventions
-
-## 🚀 Fresh Installation Instructions
-
-### On Your PC (After Pushing to Git)
-
-1. **Clone the Repository:**
-   ```bash
-   git clone <your-repo-url>
-   cd n8n-keywordsai
-   ```
-
-2. **Install Dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Build:**
-   ```bash
-   npm run build
-   ```
-
-4. **Link to n8n:**
-   ```bash
-   npm link
-   mkdir -p ~/.n8n/custom
-   cd ~/.n8n/custom
-   npm init -y  # if needed
-   npm link n8n-nodes-keywordsai
-   ```
-
-5. **Start n8n:**
-   ```bash
-   npx n8n start
-   ```
-
-6. **Open:** http://localhost:5678
-
-See `INSTALL.md` for detailed step-by-step instructions.
-
-## 📝 Before Pushing to Git
-
-### Recommended Commands
-
-```bash
-cd /Users/chensihan/Documents/github/n8n-keywordsai
-
-# Check git status
-git status
-
-# Add all files (respects .gitignore)
-git add .
-
-# Commit
-git commit -m "Initial release: Keywords AI node for n8n"
-
-# Push (set your remote first if not set)
-git remote add origin <your-repo-url>
-git push -u origin main
-```
-
-### What Will Be Pushed
-
-- ✅ Source code (TypeScript files)
-- ✅ Configuration files (package.json, tsconfig.json, etc.)
-- ✅ Documentation (README.md, INSTALL.md)
-- ✅ Icons (SVG files)
-- ✅ package-lock.json (for consistent installs)
-- ❌ dist/ (excluded by .gitignore)
-- ❌ node_modules/ (excluded by .gitignore)
-- ❌ Temporary files (excluded by .gitignore)
-
-## 🔄 Clean Reinstall (On Any Machine)
-
-After pushing, on any machine:
-
-```bash
-# 1. Clone
-git clone <your-repo-url>
-cd n8n-keywordsai
-
-# 2. Install
-npm install
-
-# 3. Build
-npm run build
-
-# 4. Link
-npm link
-cd ~/.n8n/custom
-npm link n8n-nodes-keywordsai
-
-# 5. Run
-npx n8n start
-```
-
-## 📚 Documentation Files
-
-- **README.md** - Main project documentation
-- **INSTALL.md** - Detailed installation guide with troubleshooting
-- **CHANGELOG.md** - Version history
-- **CODE_OF_CONDUCT.md** - Community guidelines
-- **LICENSE.md** - License information
-
-## 🧪 Testing Checklist
-
-Before using on production:
-
-- [ ] Fresh install on a clean machine
-- [ ] Test Gateway (Standard) mode
-- [ ] Test Gateway with Prompt mode
-- [ ] Verify prompt list loads
-- [ ] Verify versions load
-- [ ] Verify variables auto-populate
-- [ ] Test with different models
-- [ ] Test error handling
-- [ ] Test credentials validation
-
-## 🎯 Next Steps
-
-1. **Push to Git** (commands above)
-2. **Test on another machine** to verify clean install
-3. **Create release** when stable
-4. **Submit to n8n Community** (optional)
-5. **Create example workflows**
-
-## 📊 Stats
-
-- **Lines of Code**: ~430 (node) + ~80 (credentials)
-- **Dependencies**: Minimal (n8n-workflow peer dependency)
-- **Size**: < 1MB (without node_modules)
-- **Build Time**: ~3 seconds
-- **Supported n8n Version**: 1.0.0+
-
-## ✨ Key Features
-
-1. **No Manual Variable Entry**: Variables are automatically discovered from your prompts
-2. **Dynamic Loading**: Prompts and versions load directly from Keywords AI API
-3. **Type Safe**: Full TypeScript implementation with no `any` types
-4. **Well Documented**: Comprehensive README and INSTALL guides
-5. **Clean Code**: Passes all n8n linters and follows best practices
-
----
-
-**Status**: ✅ **READY FOR PRODUCTION**
-
-Last Updated: 2025-12-31
-Version: 0.1.0
-
+This status does not assert npm availability, PR status, or release readiness. Local build, live execution, platform validation, and publication are separate outcomes. Use the dated validation record for the evidence and limitations of the completed run.

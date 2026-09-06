@@ -1,447 +1,114 @@
-# Observability Parameters Guide
+# Inspect n8n executions in Respan
 
-Complete guide to using Keywords AI's observability parameters in the n8n node for tracking, monitoring, and analyzing your LLM calls.
+Use the native trace to inspect workflow execution and the Gateway log to inspect the model request. The current integration records them separately.
 
-## 📊 Overview
+## What gets recorded
 
-The Keywords AI node includes **5 observability parameters** that help you:
-- Track user sessions and requests
-- Monitor costs and performance
-- Filter and search logs efficiently
-- Group related calls together
-- Get detailed metrics in responses
+| Output | Source | Useful information |
+| --- | --- | --- |
+| Native execution trace | n8n's provider/exporter adapted by the Respan instrumentation | Workflow and node names, parent links, timings, and status |
+| Gateway request log | Respan Gateway | Model, provider, request/response content, usage, cost, and request metadata |
+| Local evidence | The runner and isolated n8n database | Exact response marker, expected validation error, exit status, and platform lookup IDs |
 
-All observability parameters are **optional** and found in **Additional Fields**.
+The instrumentation translates n8n attributes into canonical fields, including nested `respan.metadata`. Some nested metadata and item counts were not visible in the recorded platform review. Distinguish what the translator emits from what the platform returns.
 
----
+Native workflow/node spans do not contain node request/response bodies. This repository's Gateway workflow does not exercise n8n's separate Agent, LLM, tool, or memory tracing surfaces.
 
-## 🔍 Available Parameters
+## Run with tracing
 
-### 1. Metadata (JSON)
+After [installation](INSTALL.md), run `npm run integration`. For editor workflows, use `npm start`.
 
-**Purpose**: Store custom key-value pairs for reference
+Both launchers preload `@respan/instrumentation-n8n/register`, enable workflow and node tracing, and configure OTLP/HTTP Protobuf export to `https://api.respan.ai/api/v2/traces`. n8n owns the provider, batching, and shutdown. The Respan API key authenticates export, and manual-run tracing is enabled for local inspection. See [INSTALL.md](INSTALL.md) for endpoint configuration.
 
-**How to use**:
-1. Expand "Additional Fields"
-2. Add "Metadata (JSON)"
-3. Enter a JSON object:
+The runner supplies a W3C `traceparent` to each webhook, choosing its trace ID in advance. The workflow root has the supplied caller parent ID; no extra caller span is emitted.
 
-```json
-{
-  "session_id": "sess_abc123",
-  "user_type": "premium",
-  "feature": "chat_assistant",
-  "version": "v2.1",
-  "environment": "production"
-}
-```
+## Read local evidence
 
-**Use cases**:
-- Session tracking
-- A/B testing variants
-- Feature flags
-- Environment tagging
-- Custom business logic
+The runner prints `.local/runs/<run-id>/evidence.json` on completion:
 
-**View in Keywords AI**: Visible in log details, searchable via filters
+| File or directory | Contents |
+| --- | --- |
+| `evidence.json` | UTC run times, workflow IDs, trace IDs, Gateway log ID, execution checks, shutdown result |
+| `workflows.json` | Imported workflows and their synthetic inputs |
+| `gateway-response.json` | Selected completion fields, usage, and request-breakdown metrics |
+| `invalid-metadata-response.json` | The webhook error response |
+| `n8n.log` | Startup, execution, and shutdown output with the configured key redacted |
+| `state/.n8n/` | Isolated database, encrypted credentials, and local encryption configuration |
 
----
+`platform-review.json` is a separately saved artifact for the recorded run in [VALIDATION.md](VALIDATION.md). The script does not create it or call MCP automatically.
 
-### 2. Custom Identifier
+The runner checks that Gateway returns HTTP 200, the exact marker, positive usage, and a log ID. For invalid metadata, it checks the isolated database after shutdown for `NodeOperationError: Metadata must be a JSON object` on Respan Gateway. An import error, unexpected response, wrong failure, timeout, or failed shutdown makes the command fail.
 
-**Purpose**: Fast, indexed tag for filtering logs
+Run directories are ignored by Git. Share selected evidence rather than the whole directory: n8n state includes credentials and execution data, and ordinary node responses may contain more request-breakdown fields than the runner saves.
 
-**How to use**:
-1. Expand "Additional Fields"
-2. Add "Custom Identifier"
-3. Enter a string value:
+## Inspect the same run with Respan MCP
 
-```
-transaction_12345
-```
+Read `started_at`, `finished_at`, and the scenario IDs from `evidence.json`. Use the organization that received the export. Scope every lookup to those IDs and a UTC time range covering the run.
 
-**Difference from Metadata**:
-- ✅ **Indexed** - faster search and filtering
-- ✅ Shows as "Custom ID" field in logs
-- ✅ Single string value
-- ❌ Can't store multiple key-value pairs
+### Find each native trace
 
-**Use cases**:
-- Transaction IDs
-- Request IDs
-- Order numbers
-- Ticket numbers
-- Unique identifiers you search frequently
-
-**Best practice**: Use this for IDs you'll search often, use metadata for everything else.
-
----
-
-### 3. Customer Identifier
-
-**Purpose**: Tag to identify the end user making the request
-
-**How to use**:
-1. Expand "Additional Fields"
-2. Add "Customer Identifier"
-3. Enter user ID:
-
-```
-user_john_doe_123
-```
-
-**What it enables**:
-- User-level analytics
-- Per-user cost tracking
-- Usage patterns by user
-- User-specific logs filtering
-
-**View in Keywords AI**: 
-- Users page shows aggregated data per customer
-- Can filter logs by customer_identifier
-
-**Example workflow**:
-```
-HTTP Request (get user from database)
-  ↓
-Set Variable (userId = "user_123")
-  ↓
-Keywords AI (customer_identifier: "user_123")
-```
-
----
-
-### 4. Customer Params (JSON)
-
-**Purpose**: Pass detailed customer information for monitoring
-
-**How to use**:
-1. Expand "Additional Fields"
-2. Add "Customer Params (JSON)"
-3. Enter JSON with customer details:
+Call `list_traces` with this filter shape. Replace all angle-bracket placeholders:
 
 ```json
 {
-  "customer_identifier": "user_123",
-  "name": "John Doe",
-  "email": "john@example.com",
-  "period_start": "2025-01-01",
-  "period_end": "2025-01-31",
-  "period_budget": 100.0,
-  "total_budget": 500.0,
-  "budget_duration": "monthly",
-  "markup_percentage": 20.0,
-  "group_identifier": "enterprise_tier_1"
+  "start_time": "<UTC time just before the run>",
+  "end_time": "<UTC time just after the run>",
+  "filters": [
+    {"field": "trace_unique_id", "operator": "", "value": ["<scenario trace_id>"]}
+  ],
+  "page_size": 1
 }
 ```
 
-**Available fields**:
+Call `get_trace_tree` with that `trace_id` and the same time range. The reference workflow has this structure:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `customer_identifier` | string | **Required** - Unique user ID |
-| `name` | string | Customer name |
-| `email` | string | Customer email |
-| `group_identifier` | string | Group/tier ID |
-| `period_start` | string | Budget period start (YYYY-MM-DD) |
-| `period_end` | string | Budget period end (YYYY-MM-DD) |
-| `period_budget` | float | Budget for the period |
-| `total_budget` | float | Total lifetime budget |
-| `budget_duration` | string | `yearly`, `monthly`, `weekly`, or `daily` |
-| `markup_percentage` | float | Markup % for cost reporting |
+```text
+workflow  [entity name: <run-id>-<scenario>]
+├── task  [entity name: Webhook]
+└── task  [entity name: Respan Gateway]
+```
 
-**Use cases**:
-- Per-user budget tracking
-- Cost allocation
-- Usage alerts per customer
-- Tiered pricing
-- Enterprise account management
+Both tasks must point to the workflow span. The success scenario has three successful spans. In the invalid-metadata scenario, Webhook succeeds while Respan Gateway and the workflow fail.
 
-**View in Keywords AI**: Users page with full analytics and budget tracking
+Inspect entity names as well as the semantic names `workflow` and `task`. Record missing fields and misleading error classifications separately from execution status.
 
----
+### Inspect the Gateway log
 
-### 5. Request Breakdown
+Use the successful scenario's `gateway_log_id` with `list_logs`:
 
-**Purpose**: Get detailed metrics in the API response
-
-**How to use**:
-1. Expand "Additional Fields"
-2. Toggle "Request Breakdown" to `true`
-
-**What you get in response**:
 ```json
 {
-  "id": "chatcmpl-...",
-  "choices": [...],
-  "request_breakdown": {
-    "prompt_tokens": 50,
-    "completion_tokens": 100,
-    "cost": 0.00015,
-    "model": "gpt-4o-mini",
-    "cached": false,
-    "timestamp": "2025-12-31T02:30:00Z",
-    "status_code": 200,
-    "stream": false,
-    "latency": 1.25,
-    "routing_time": 0.15,
-    "sentiment_score": 0,
-    "scores": {},
-    "category": "Questions",
-    "metadata": {...},
-    "prompt_messages": [...],
-    "completion_message": {...},
-    "full_request": {...}
-  }
+  "start_time": "<UTC time just before the run>",
+  "end_time": "<UTC time just after the run>",
+  "filters": [
+    {"field": "unique_id", "operator": "", "value": ["<gateway_log_id>"]}
+  ],
+  "page_size": 1
 }
 ```
 
-**Metrics included**:
-- **Tokens**: Prompt, completion, total
-- **Cost**: In USD
-- **Performance**: Latency, routing time
-- **Status**: HTTP status code
-- **Caching**: Whether cached
-- **Sentiment**: Sentiment score
-- **Full request**: Complete request body
+Compare model, provider, status, token counts, response marker, and `metadata.run_id` with the local response. Call `get_log_detail` with the same log ID when full content is required. A truncated list response does not verify full input; record detail timeouts or missing fields explicitly.
 
-**Use cases**:
-- Real-time cost monitoring
-- Performance tracking
-- Building usage dashboards
-- Immediate validation
-- Cost estimation in workflows
+The runner also sends `custom_identifier: <run-id>-gateway`, which supports an exact alternative lookup. To check for an unexpected invalid-scenario request, filter by the exact `<run-id>-invalid-metadata` identifier and the same run window.
 
-**Note**: In streaming mode, breakdown is sent as the last chunk.
+The current Gateway log has no parent span ID connecting it to the native tree. n8n outbound trace-header configuration alone does not establish that link. Report the two records separately until matching trace and parent IDs are observed.
 
----
+### Record the review outcome
 
-## 🎯 Real-World Examples
+The runner leaves `platform_check` as `PENDING_MCP_REVIEW`. Retain it until the platform is inspected. Record passed checks, unavailable fields, and operations that were not run. A successful webhook or exporter shutdown alone is not a complete platform review.
 
-### Example 1: E-commerce Customer Support
+The dated [validation record](VALIDATION.md) contains exact IDs and observed metadata, error-classification, and log-detail limitations. Use new evidence when validating later changes.
 
-```json
-// In n8n Keywords AI node:
+## Correlate your own Gateway requests
 
-Additional Fields:
-  ├─ Metadata (JSON):
-  │    {
-  │      "order_id": "ORD-12345",
-  │      "issue_type": "refund",
-  │      "priority": "high",
-  │      "agent_id": "agent_42"
-  │    }
-  ├─ Custom Identifier: "ticket_67890"
-  ├─ Customer Identifier: "customer_jane_smith"
-  └─ Request Breakdown: true
-```
+Set these under **Additional Fields**:
 
-**Benefits**:
-- Track cost per support ticket
-- Link conversations to orders
-- Monitor response quality
-- Alert on high-cost interactions
+| Editor field | API field | Example |
+| --- | --- | --- |
+| Metadata (JSON) | `metadata` | `{"run_id":"support-check-01","scenario":"gateway"}` |
+| Custom Identifier | `custom_identifier` | `support-check-01-gateway` |
+| Customer Identifier | `customer_identifier` | `demo-customer` |
+| Customer Params (JSON) | `customer_params` | `{"customer_identifier":"demo-customer","name":"Demo"}` |
+| Request Breakdown | `request_breakdown` | `true` |
 
----
-
-### Example 2: SaaS Multi-Tenant Platform
-
-```json
-Additional Fields:
-  ├─ Customer Identifier: "tenant_acme_corp"
-  ├─ Customer Params (JSON):
-  │    {
-  │      "customer_identifier": "tenant_acme_corp",
-  │      "name": "Acme Corporation",
-  │      "email": "admin@acme.com",
-  │      "group_identifier": "enterprise",
-  │      "period_budget": 1000.0,
-  │      "period_start": "2025-01-01",
-  │      "period_end": "2025-01-31",
-  │      "markup_percentage": 25.0
-  │    }
-  └─ Metadata (JSON):
-  │    {
-  │      "plan": "enterprise",
-  │      "feature": "ai_assistant",
-  │      "api_version": "v2"
-  │    }
-```
-
-**Benefits**:
-- Per-tenant cost tracking
-- Budget alerts
-- Usage analytics by tenant
-- Chargeback/billing data
-- Cost + markup calculation
-
----
-
-### Example 3: A/B Testing Different Prompts
-
-```json
-Workflow A:
-  Metadata: {"variant": "A", "test_id": "prompt_test_001"}
-  Custom Identifier: "test_001_variant_A"
-
-Workflow B:
-  Metadata: {"variant": "B", "test_id": "prompt_test_001"}
-  Custom Identifier: "test_001_variant_B"
-```
-
-**Benefits**:
-- Compare costs between variants
-- Track performance differences
-- Filter logs by test variant
-- Analyze quality metrics
-
----
-
-### Example 4: Session-Based Chat Application
-
-```json
-Additional Fields:
-  ├─ Metadata (JSON):
-  │    {
-  │      "session_id": "sess_abc123",
-  │      "conversation_id": "conv_456",
-  │      "message_number": 5,
-  │      "context": "customer_inquiry"
-  │    }
-  ├─ Customer Identifier: "user_789"
-  └─ Request Breakdown: false
-```
-
-**Benefits**:
-- Link all messages in a session
-- Track conversation costs
-- Monitor session lengths
-- User engagement metrics
-
----
-
-## 📈 Best Practices
-
-### 1. **Consistent Naming**
-Use consistent ID formats:
-- ✅ `user_123`, `user_456`
-- ❌ `123`, `user456`, `USER_789` (mixed formats)
-
-### 2. **Strategic Field Selection**
-- **High-frequency searches** → Custom Identifier
-- **Related data** → Metadata
-- **User analytics** → Customer Identifier + Customer Params
-- **Cost monitoring** → Request Breakdown
-
-### 3. **Budget Monitoring**
-Set up customer params for users who need budget limits:
-```json
-{
-  "customer_identifier": "user_123",
-  "period_budget": 50.0,
-  "budget_duration": "monthly",
-  "period_start": "2025-01-01",
-  "period_end": "2025-01-31"
-}
-```
-
-### 4. **Workflow Integration**
-```
-Trigger → Get User Data → Set Variables → Keywords AI
-                                            ↓
-                            (Pass user data in customer params)
-```
-
-### 5. **Error Handling**
-```json
-// In metadata, track error states
-{
-  "retry_count": 0,
-  "fallback_used": false,
-  "original_model": "gpt-4o"
-}
-```
-
----
-
-## 🔎 Filtering in Keywords AI Dashboard
-
-### By Custom Identifier
-```
-Logs → Filter → Custom ID: "transaction_12345"
-```
-
-### By Customer
-```
-Logs → Filter → Customer Identifier: "user_123"
-or
-Users → Select user → View all logs
-```
-
-### By Metadata
-```
-Logs → Filter → Metadata → Key: "session_id", Value: "sess_abc"
-```
-
----
-
-## 🚨 Common Pitfalls
-
-### ❌ Invalid JSON
-```json
-// BAD - missing quotes
-{session_id: 123}
-
-// GOOD
-{"session_id": "123"}
-```
-
-### ❌ Nested JSON in Metadata Field
-Don't pass already-stringified JSON:
-```json
-// BAD
-"{\"key\": \"value\"}"
-
-// GOOD
-{"key": "value"}
-```
-
-### ❌ Missing Customer Identifier in Customer Params
-```json
-// BAD - will fail
-{
-  "name": "John"
-}
-
-// GOOD
-{
-  "customer_identifier": "user_123",
-  "name": "John"
-}
-```
-
----
-
-## 📚 Related Documentation
-
-- [Keywords AI Metadata Docs](https://docs.keywordsai.co/features/generation/metadata)
-- [Customer Identifier Guide](https://docs.keywordsai.co/features/generation/customer-identifier)
-- [User Analytics](https://docs.keywordsai.co/features/user/user-creation)
-- [API Reference](https://docs.keywordsai.co/api-endpoints/develop/gateway/chat-completions#observability-parameters)
-
----
-
-## 🎓 Quick Reference
-
-| Parameter | Format | Indexed | Use For |
-|-----------|--------|---------|---------|
-| Metadata | JSON | No | General data, flexible key-values |
-| Custom Identifier | String | Yes | Fast searching, unique IDs |
-| Customer Identifier | String | Yes | User tracking, per-user analytics |
-| Customer Params | JSON | Yes | Budget tracking, user details |
-| Request Breakdown | Boolean | N/A | Real-time metrics in response |
-
----
-
-**Pro Tip**: Start with just `customer_identifier` and `metadata`, then add others as your monitoring needs grow!
-
+Gateway request metadata does not automatically populate the native workflow metadata or connect both records into one trace.
